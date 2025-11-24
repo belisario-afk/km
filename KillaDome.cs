@@ -1553,9 +1553,12 @@ namespace Oxide.Plugins
                 return;
             }
             
-            // Filter to only guns that exist in config and are owned
+            // Get weapon in the OTHER slot to exclude it (prevent duplicate weapons)
+            string otherSlotWeapon = slot == "primary" ? loadout.Secondary : loadout.Primary;
+            
+            // Filter to only guns that exist in config, are owned, and NOT in other slot
             string[] availableWeapons = _gunConfig.GetAllGunIds()
-                .Where(g => ownedGunsSet.Contains(g))
+                .Where(g => ownedGunsSet.Contains(g) && g != otherSlotWeapon)
                 .ToArray();
             
             if (availableWeapons.Length == 0)
@@ -2584,6 +2587,17 @@ namespace Oxide.Plugins
                         loadout.Primary = currentWeapon;
                     else
                         loadout.Secondary = currentWeapon;
+                }
+                
+                // Prevent duplicate weapons in both slots
+                if (!string.IsNullOrEmpty(loadout.Primary) && !string.IsNullOrEmpty(loadout.Secondary) 
+                    && loadout.Primary == loadout.Secondary)
+                {
+                    // Find another owned gun for secondary, or clear it
+                    string alternativeGun = ownedGuns.FirstOrDefault(g => g != loadout.Primary) ?? "";
+                    loadout.Secondary = alternativeGun;
+                    if (editingSlot == "secondary")
+                        currentWeapon = alternativeGun;
                 }
                 
                 // === HEADER === (6% height - full width)
