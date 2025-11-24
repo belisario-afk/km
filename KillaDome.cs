@@ -98,7 +98,7 @@ namespace Oxide.Plugins
             {
                 if (Guns.ContainsKey(weaponId))
                 {
-                    return Guns[weaponId].GetAllSkinIds() ?? new List<string>();
+                    return Guns[weaponId].GetAllSkinIds();
                 }
                 return new List<string>();
             }
@@ -289,15 +289,16 @@ namespace Oxide.Plugins
             public int Cost { get; set; } = 500; // Cost to purchase the base gun
             public string DefaultSkinId { get; set; } = "0"; // Default Rust skin ID (0 = no skin)
             
-            // NEW: Full skin definitions with individual image, price, rarity per skin
+            // Full skin definitions with individual image, price, rarity per skin
             [JsonProperty("Skins")]
             public List<SkinDefinition> Skins { get; set; } = new List<SkinDefinition>();
             
-            // Legacy support - will be converted to SkinDefinitions on load
+            // Legacy support - kept for backward compatibility with old config files
+            // Legacy skin IDs are included in GetAllSkinIds() but won't have full metadata
             [JsonProperty("AvailableSkins")]
             public List<string> AvailableSkins { get; set; } = new List<string>();
             
-            // Helper to get all skin IDs
+            // Helper to get all skin IDs (combines Skins and legacy AvailableSkins)
             public List<string> GetAllSkinIds()
             {
                 var ids = new List<string>();
@@ -320,7 +321,7 @@ namespace Oxide.Plugins
                 return ids;
             }
             
-            // Get skin definition by ID
+            // Get skin definition by ID (returns null for legacy skins without definitions)
             public SkinDefinition GetSkin(string skinId)
             {
                 if (Skins != null)
@@ -369,6 +370,9 @@ namespace Oxide.Plugins
             [JsonProperty("LegendaryCost")]
             public int LegendaryCost { get; set; } = 800;
             
+            /// <summary>
+            /// Get default cost for a rarity tier. Used as fallback when skin doesn't have explicit cost.
+            /// </summary>
             public int GetCostForRarity(string rarity)
             {
                 switch (rarity?.ToLower())
@@ -381,6 +385,9 @@ namespace Oxide.Plugins
                 }
             }
             
+            /// <summary>
+            /// Get cost for a skin ID using heuristics. Used when skin definition is not available.
+            /// </summary>
             public int GetCostForSkinId(string skinId)
             {
                 // Simple heuristic: if skin ID is "0", it's free (default)
@@ -3866,6 +3873,9 @@ namespace Oxide.Plugins
                 }
             }
             
+            /// <summary>
+            /// Get UI color string for rarity tier (RGB format for Rust UI)
+            /// </summary>
             private string GetRarityColor(string rarity)
             {
                 switch (rarity?.ToLower())
