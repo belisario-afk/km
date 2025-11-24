@@ -1542,7 +1542,27 @@ namespace Oxide.Plugins
             if (session == null || session.Profile.Loadouts.Count == 0) return;
             
             var loadout = session.Profile.Loadouts[0];
-            string[] availableWeapons = _gunConfig.GetAllGunIds(); // Get weapons from centralized config
+            
+            // Only allow cycling through OWNED guns
+            var ownedGuns = session.Profile.OwnedGuns;
+            var ownedGunsSet = new HashSet<string>(ownedGuns ?? new List<string>());
+            
+            if (ownedGunsSet.Count == 0)
+            {
+                player.ChatMessage("<color=#FF4444>You don't own any guns! Purchase weapons in the Store.</color>");
+                return;
+            }
+            
+            // Filter to only guns that exist in config and are owned
+            string[] availableWeapons = _gunConfig.GetAllGunIds()
+                .Where(g => ownedGunsSet.Contains(g))
+                .ToArray();
+            
+            if (availableWeapons.Length == 0)
+            {
+                player.ChatMessage("<color=#FF4444>You don't own any guns! Purchase weapons in the Store.</color>");
+                return;
+            }
             
             string currentWeapon = slot == "primary" ? loadout.Primary : loadout.Secondary;
             int currentIndex = Array.IndexOf(availableWeapons, currentWeapon);
@@ -2137,13 +2157,14 @@ namespace Oxide.Plugins
                 Tokens = startingTokens;
                 LastUpdated = DateTime.UtcNow;
                 
-                // Create default loadout
+                // Create empty default loadout - players must purchase guns first
                 Loadouts.Add(new Loadout
                 {
                     Name = "Default",
-                    Primary = "ak47",
-                    Secondary = "pistol",
+                    Primary = "",  // Empty - no default weapon
+                    Secondary = "", // Empty - no default weapon
                     PrimaryAttachments = new Dictionary<string, string>(),
+                    SecondaryAttachments = new Dictionary<string, string>(),
                     Skins = new Dictionary<string, string>()
                 });
             }
@@ -2534,11 +2555,12 @@ namespace Oxide.Plugins
                 
                 if (session.Profile.Loadouts.Count == 0)
                 {
+                    // Create empty loadout - no default weapons
                     session.Profile.Loadouts.Add(new Loadout
                     {
                         Name = "Default",
-                        Primary = "ak47",
-                        Secondary = "pistol",
+                        Primary = "",
+                        Secondary = "",
                         PrimaryAttachments = new Dictionary<string, string>(),
                         SecondaryAttachments = new Dictionary<string, string>(),
                         Skins = new Dictionary<string, string>()
@@ -2549,9 +2571,19 @@ namespace Oxide.Plugins
                 string editingSlot = session.EditingWeaponSlot ?? "primary";
                 string currentWeapon = editingSlot == "primary" ? loadout.Primary : loadout.Secondary;
                 
-                if (string.IsNullOrEmpty(currentWeapon))
+                // Get list of owned guns
+                var ownedGuns = session.Profile.OwnedGuns ?? new List<string>();
+                bool hasOwnedGuns = ownedGuns.Count > 0;
+                
+                // Validate current weapon is owned, otherwise clear it
+                if (!string.IsNullOrEmpty(currentWeapon) && !ownedGuns.Contains(currentWeapon))
                 {
-                    currentWeapon = editingSlot == "primary" ? "ak47" : "pistol";
+                    // Current weapon not owned, set to first owned gun or empty
+                    currentWeapon = ownedGuns.FirstOrDefault() ?? "";
+                    if (editingSlot == "primary")
+                        loadout.Primary = currentWeapon;
+                    else
+                        loadout.Secondary = currentWeapon;
                 }
                 
                 // === HEADER === (6% height - full width)
@@ -2613,6 +2645,9 @@ namespace Oxide.Plugins
             
             private void ShowWeaponsEditorContent(CuiElementContainer container, BasePlayer player, PlayerSession session, Loadout loadout, string editingSlot, string currentWeapon)
             {
+                // Check if player owns any guns
+                var ownedGuns = session.Profile.OwnedGuns ?? new List<string>();
+                bool hasOwnedGuns = ownedGuns.Count > 0;
                 
                 // === WEAPON SELECTION === (16% height, adjusted for sub-tabs)
                 container.Add(new CuiPanel
@@ -2626,6 +2661,30 @@ namespace Oxide.Plugins
                     Text = { Text = "SELECT WEAPONS", FontSize = 11, Align = TextAnchor.UpperLeft, Color = "0.8 0.8 0.8 1" },
                     RectTransform = { AnchorMin = "0.02 0.92", AnchorMax = "0.30 1" }
                 }, "WeaponSelection");
+                
+                // Show warning if no guns owned
+                if (!hasOwnedGuns)
+                {
+                    container.Add(new CuiPanel
+                    {
+                        Image = { Color = "0.5 0.2 0.1 0.9" },
+                        RectTransform = { AnchorMin = "0.1 0.2", AnchorMax = "0.9 0.8" }
+                    }, "WeaponSelection", "NoGunsWarning");
+                    
+                    container.Add(new CuiLabel
+                    {
+                        Text = { Text = "⚠ NO WEAPONS OWNED!", FontSize = 16, Align = TextAnchor.MiddleCenter, Color = "1 0.8 0.5 1" },
+                        RectTransform = { AnchorMin = "0 0.5", AnchorMax = "1 0.9" }
+                    }, "NoGunsWarning");
+                    
+                    container.Add(new CuiLabel
+                    {
+                        Text = { Text = "Visit the STORE tab to purchase weapons", FontSize = 11, Align = TextAnchor.MiddleCenter, Color = "0.9 0.9 0.9 1" },
+                        RectTransform = { AnchorMin = "0 0.1", AnchorMax = "1 0.45" }
+                    }, "NoGunsWarning");
+                    
+                    return; // Don't show weapon slots if no guns owned
+                }
                 
                 // PRIMARY WEAPON
                 container.Add(new CuiPanel
@@ -2646,22 +2705,29 @@ namespace Oxide.Plugins
                     RectTransform = { AnchorMin = "0.05 0.88", AnchorMax = "0.95 0.98" }
                 }, "PrimaryBox");
                 
-                // Weapon image - using centralized config
-                string primaryImageUrl = _plugin._gunConfig.GetGunImageUrl(loadout.Primary);
-                container.Add(new CuiElement
+                // Get primary weapon - check if owned
+                string primaryGun = loadout.Primary;
+                bool primaryOwned = !string.IsNullOrEmpty(primaryGun) && ownedGuns.Contains(primaryGun);
+                
+                if (primaryOwned)
                 {
-                    Parent = "PrimaryBox",
-                    Components =
+                    // Weapon image - using centralized config
+                    string primaryImageUrl = _plugin._gunConfig.GetGunImageUrl(loadout.Primary);
+                    container.Add(new CuiElement
                     {
-                        new CuiRawImageComponent { Png = (string)_plugin.ImageLibrary?.Call("GetImage", primaryImageUrl) },
-                        new CuiRectTransformComponent { AnchorMin = "0.3 0.3", AnchorMax = "0.7 0.7" }
-                    }
-                });
+                        Parent = "PrimaryBox",
+                        Components =
+                        {
+                            new CuiRawImageComponent { Png = (string)_plugin.ImageLibrary?.Call("GetImage", primaryImageUrl) },
+                            new CuiRectTransformComponent { AnchorMin = "0.3 0.3", AnchorMax = "0.7 0.7" }
+                        }
+                    });
+                }
                 
                 // Get display name from config
-                string primaryDisplayName = _plugin._gunConfig.Guns.ContainsKey(loadout.Primary) 
+                string primaryDisplayName = primaryOwned && _plugin._gunConfig.Guns.ContainsKey(loadout.Primary) 
                     ? _plugin._gunConfig.Guns[loadout.Primary].DisplayName 
-                    : loadout.Primary.ToUpper();
+                    : "NO WEAPON";
                 
                 // Add background for better visibility
                 container.Add(new CuiPanel
@@ -2672,7 +2738,7 @@ namespace Oxide.Plugins
                 
                 container.Add(new CuiLabel
                 {
-                    Text = { Text = primaryDisplayName, FontSize = 12, Align = TextAnchor.MiddleCenter, Color = "1 0.9 0.5 1" },
+                    Text = { Text = primaryDisplayName, FontSize = 12, Align = TextAnchor.MiddleCenter, Color = primaryOwned ? "1 0.9 0.5 1" : "0.6 0.4 0.4 1" },
                     RectTransform = { AnchorMin = "0 0", AnchorMax = "1 1" }
                 }, "PrimaryNameBg");
                 
@@ -2709,22 +2775,29 @@ namespace Oxide.Plugins
                     RectTransform = { AnchorMin = "0.05 0.88", AnchorMax = "0.95 0.98" }
                 }, "SecondaryBox");
                 
-                // Weapon image - using centralized config
-                string secondaryImageUrl = _plugin._gunConfig.GetGunImageUrl(loadout.Secondary);
-                container.Add(new CuiElement
+                // Get secondary weapon - check if owned
+                string secondaryGun = loadout.Secondary;
+                bool secondaryOwned = !string.IsNullOrEmpty(secondaryGun) && ownedGuns.Contains(secondaryGun);
+                
+                if (secondaryOwned)
                 {
-                    Parent = "SecondaryBox",
-                    Components =
+                    // Weapon image - using centralized config
+                    string secondaryImageUrl = _plugin._gunConfig.GetGunImageUrl(loadout.Secondary);
+                    container.Add(new CuiElement
                     {
-                        new CuiRawImageComponent { Png = (string)_plugin.ImageLibrary?.Call("GetImage", secondaryImageUrl) },
-                        new CuiRectTransformComponent { AnchorMin = "0.3 0.3", AnchorMax = "0.7 0.7" }
-                    }
-                });
+                        Parent = "SecondaryBox",
+                        Components =
+                        {
+                            new CuiRawImageComponent { Png = (string)_plugin.ImageLibrary?.Call("GetImage", secondaryImageUrl) },
+                            new CuiRectTransformComponent { AnchorMin = "0.3 0.3", AnchorMax = "0.7 0.7" }
+                        }
+                    });
+                }
                 
                 // Get display name from config
-                string secondaryDisplayName = _plugin._gunConfig.Guns.ContainsKey(loadout.Secondary) 
+                string secondaryDisplayName = secondaryOwned && _plugin._gunConfig.Guns.ContainsKey(loadout.Secondary) 
                     ? _plugin._gunConfig.Guns[loadout.Secondary].DisplayName 
-                    : loadout.Secondary.ToUpper();
+                    : "NO WEAPON";
                 
                 // Add background for better visibility
                 container.Add(new CuiPanel
@@ -2735,7 +2808,7 @@ namespace Oxide.Plugins
                 
                 container.Add(new CuiLabel
                 {
-                    Text = { Text = secondaryDisplayName, FontSize = 12, Align = TextAnchor.MiddleCenter, Color = "0.7 0.9 1.0 1" },
+                    Text = { Text = secondaryDisplayName, FontSize = 12, Align = TextAnchor.MiddleCenter, Color = secondaryOwned ? "0.7 0.9 1.0 1" : "0.6 0.4 0.4 1" },
                     RectTransform = { AnchorMin = "0 0", AnchorMax = "1 1" }
                 }, "SecondaryNameBg");
                 
@@ -2760,9 +2833,12 @@ namespace Oxide.Plugins
                     RectTransform = { AnchorMin = "0.05 0.06", AnchorMax = "0.95 0.64" }
                 }, UI_TAB_CONTAINER, "EditorArea");
                 
+                // Show different content based on whether current weapon is owned
+                bool currentWeaponOwned = !string.IsNullOrEmpty(currentWeapon) && ownedGuns.Contains(currentWeapon);
+                string displayWeaponName = currentWeaponOwned ? currentWeapon.ToUpper() : "NO WEAPON";
                 container.Add(new CuiLabel
                 {
-                    Text = { Text = $"CUSTOMIZE: {currentWeapon.ToUpper()}", FontSize = 12, Align = TextAnchor.UpperLeft, Color = "0.8 0.8 0.8 1" },
+                    Text = { Text = $"CUSTOMIZE: {displayWeaponName}", FontSize = 12, Align = TextAnchor.UpperLeft, Color = currentWeaponOwned ? "0.8 0.8 0.8 1" : "0.6 0.4 0.4 1" },
                     RectTransform = { AnchorMin = "0.02 0.96", AnchorMax = "0.50 1" }
                 }, "EditorArea");
                 
