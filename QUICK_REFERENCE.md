@@ -41,41 +41,70 @@
 
 ### Adding a Weapon Skin (2 minutes)
 
-**File:** KillaDome.cs  
-**Line:** ~168
+**File:** oxide/data/KillaDome/Guns.json (or in code: KillaDome.cs)  
 
-```csharp
-// ADD THIS to the Skins list:
-new SkinDefinition
+Each gun has a `Skins` array with full skin definitions:
+
+```json
 {
-    Name = "My Gun - Epic Skin",
-    SkinId = "123456789",           // Workshop ID or custom ID
-    WeaponId = "mygun",             // Must match a gun Id
-    ImageUrl = "https://i.imgur.com/SKIN_IMAGE.png",
-    Cost = 500,                     // Blood Tokens
-    Tag = "NEW",                    // "NEW", "POPULAR", "HOT", or ""
-    Rarity = "Epic"                 // "Common", "Rare", "Epic", "Legendary"
+  "Guns": {
+    "ak47": {
+      "Id": "ak47",
+      "DisplayName": "AK-47",
+      "RustItemShortname": "rifle.ak",
+      "ImageUrl": "https://i.imgur.com/YourAK47Image.png",
+      "Cost": 500,
+      "DefaultSkinId": "0",
+      "Skins": [
+        {
+          "SkinId": "0",
+          "DisplayName": "Default",
+          "ImageUrl": "https://i.imgur.com/DefaultAK47.png",
+          "Cost": 0,
+          "Rarity": "Common",
+          "Tag": ""
+        },
+        {
+          "SkinId": "3602286295",
+          "DisplayName": "Tempered AK47",
+          "ImageUrl": "https://i.imgur.com/TemperedAK.png",
+          "Cost": 600,
+          "Rarity": "Epic",
+          "Tag": "HOT"
+        }
+      ]
+    }
+  }
 }
 ```
 
-✅ Automatically appears in Skins Store tab!
+**Skin Properties:**
+- `SkinId` - Rust workshop skin ID or "0" for default
+- `DisplayName` - Name shown in the store UI
+- `ImageUrl` - URL to the skin preview image
+- `Cost` - Price in Blood Tokens (0 = free)
+- `Rarity` - "Common", "Rare", "Epic", or "Legendary" (affects color styling)
+- `Tag` - "NEW", "HOT", "POPULAR", or "" (promotional badge)
+
+✅ Automatically appears in Skins Store tab with full preview!
 
 ### Adding Armor (2 minutes)
 
-**File:** KillaDome.cs  
-**Line:** ~309
+**File:** oxide/data/KillaDome/Armor.json (or in code: KillaDome.cs)
 
-```csharp
-// ADD THIS to the Armors list:
-new ArmorItem
+```json
 {
-    Name = "Cool Helmet",
-    ItemShortname = "metal.facemask",  // Rust item shortname
-    Slot = "head",                     // "head", "chest", "legs", "hands", "feet"
-    SkinId = "0",
-    ImageUrl = "https://i.imgur.com/ARMOR_IMAGE.png",
-    Cost = 300,
-    Rarity = "Rare"
+  "Armors": [
+    {
+      "Name": "Cool Helmet",
+      "ItemShortname": "metal.facemask",
+      "Slot": "head",
+      "SkinId": "0",
+      "ImageUrl": "https://i.imgur.com/ARMOR_IMAGE.png",
+      "Cost": 300,
+      "Rarity": "Rare"
+    }
+  ]
 }
 ```
 
